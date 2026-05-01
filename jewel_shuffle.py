@@ -444,21 +444,22 @@ class JewelShuffle:
         # Cells currently being animated by a FallingJewel — skip in board draw
         falling_cells = {(fj.col, fj.target_row) for fj in self.falling if not fj.done}
 
+        # Cells being animated by swap (forward or reverse) — always skip in board draw
+        swap_cells = set()
+        if self.swap_anim:
+            swap_cells = {(self.swap_anim.c1, self.swap_anim.r1),
+                          (self.swap_anim.c2, self.swap_anim.r2)}
+
         for row in range(ROWS):
             for col in range(COLS):
                 jtype = self.board[row][col]
                 if jtype < 0:
                     continue
-                if (col, row) in falling_cells:
+                if (col, row) in falling_cells or (col, row) in swap_cells:
                     continue
                 rect = board_rect(col, row)
                 is_sel = self.selected == (col, row)
                 is_matched = (row, col) in self.matched_cells
-
-                if self.swap_anim and not self.swap_anim.reverse:
-                    if (col, row) in [(self.swap_anim.c1, self.swap_anim.r1),
-                                      (self.swap_anim.c2, self.swap_anim.r2)]:
-                        continue
 
                 if is_matched:
                     flash = abs(math.sin(self.flash_timer * 0.4))
