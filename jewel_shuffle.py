@@ -285,15 +285,12 @@ class JewelShuffle:
         self.screen = pygame.display.set_mode((WIN_W, WIN_H))
         pygame.display.set_caption("Jewel Shuffle ✨")
         self.clock = pygame.time.Clock()
-
         self.reset()
 
     def reset(self):
         self.board = new_board()
-        # Clear any initial matches
         while find_matches(self.board):
             self.board = new_board()
-
         self.score = 0
         self.moves = 20
         self.selected = None
@@ -315,7 +312,6 @@ class JewelShuffle:
         if col is None:
             self.selected = None
             return
-
         if self.selected is None:
             self.selected = (col, row)
         else:
@@ -359,30 +355,48 @@ class JewelShuffle:
         self.matched_cells = matches
         self.flash_timer = 18
         self.state = "matching"
-
         for (r, c) in matches:
             rect = board_rect(c, r)
             style = JEWEL_STYLES[self.board[r][c]]
             for _ in range(8):
                 self.particles.append(Particle(rect.centerx, rect.centery, style["fill"]))
-
         if self.combo > 1:
             cx = WIN_W // 2
             cy = BOARD_OFFSET_Y + BOARD_H // 2
             self.combo_text.append([f"COMBO x{self.combo}! +{pts}", cx, cy, 60])
-
         for (r, c) in matches:
             self.board[r][c] = -1
 
     def start_falling(self):
         self.falling = []
+
+        # Snapshot which rows had jewels before gravity (per column)
+        old_jewel_rows = {}
+        for col in range(COLS):
+            old_jewel_rows[col] = [r for r in range(ROWS) if self.board[r][col] >= 0]
+
         gravity(self.board)
         fill_empty(self.board)
+
+        # Only animate jewels that actually moved or are brand-new
         for col in range(COLS):
-            for row in range(ROWS):
-                if self.board[row][col] >= 0:
-                    start_y = BOARD_OFFSET_Y - CELL * (ROWS - row)
-                    self.falling.append(FallingJewel(self.board[row][col], col, row, start_y))
+            num_removed = ROWS - len(old_jewel_rows[col])
+            if num_removed == 0:
+                continue
+
+            for new_row in range(ROWS):
+                jtype = self.board[new_row][col]
+                if new_row < num_removed:
+                    # Brand-new jewel: fall in from above the board
+                    start_y = BOARD_OFFSET_Y - CELL * (num_removed - new_row)
+                    self.falling.append(FallingJewel(jtype, col, new_row, start_y))
+                else:
+                    # Existing jewel that shifted down
+                    old_row = old_jewel_rows[col][new_row - num_removed]
+                    if old_row != new_row:
+                        start_y = BOARD_OFFSET_Y + old_row * CELL + MARGIN
+                        self.falling.append(FallingJewel(jtype, col, new_row, start_y))
+
         self.state = "falling"
 
     def update(self):
@@ -427,10 +441,15 @@ class JewelShuffle:
         draw_rounded_panel(self.screen, board_bg_rect, (220, 190, 240), radius=20, alpha=220)
         draw_board_bg(self.screen)
 
+        # Cells currently being animated by a FallingJewel — skip in board draw
+        falling_cells = {(fj.col, fj.target_row) for fj in self.falling if not fj.done}
+
         for row in range(ROWS):
             for col in range(COLS):
                 jtype = self.board[row][col]
                 if jtype < 0:
+                    continue
+                if (col, row) in falling_cells:
                     continue
                 rect = board_rect(col, row)
                 is_sel = self.selected == (col, row)
